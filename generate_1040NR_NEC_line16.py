@@ -9,6 +9,10 @@ gain_loss_columns = ['(a) Kind of property and description', '(b) Date acquired'
                      '(e) Cost or other basis', '(f) LOSS', '(g) GAIN']
 gain_loss = pd.DataFrame(columns=gain_loss_columns)
 
+transfer_history_columns = ['Date', 'Symbol', 'Side', 'Quantity', 'Cost Basis']
+stable_coins = set(['USDC'])
+EPS = 1e-10
+
 
 def append_row(df, row):
     return pd.concat([
@@ -32,7 +36,6 @@ def read_and_compute_cash_app_btc(filename='cash_app_report_btc.csv'):
     cash_app_btc.sort_values('Date', inplace=True)
     # activity = pd.concat([activity, cash_app_btc], join='inner')
     asset = deque()
-    EPS = 1e-10
     total_proceeds = 0
     total_gain_loss = 0
     # XXX: assume the amounts of BTC at the beginning and at the end of the year are both 0
@@ -56,9 +59,10 @@ def read_and_compute_cash_app_btc(filename='cash_app_report_btc.csv'):
         while sold_amount > EPS:
             assert len(asset) > 0
             current_amount = min(sold_amount, asset[0][1])
-            # cannot detect wash sale
-            # cannot distinguish between short/long term
-            # 1040-NR Schedule NEC does not need to detect them
+            # Cryptocurrency is exempt from wash sale rules. See also:
+            # https://ttlc.intuit.com/turbotax-support/en-us/help-article/cryptocurrency/wash-sale-rule-cryptocurrency/L1d6BuQpH_US_en_US
+            # This script cannot distinguish between short/long term.
+            # 1040-NR Schedule NEC does not need to detect it.
             sales_price = unit_price * current_amount
             cost = asset[0][2] * current_amount
             loss = max(0, cost - sales_price)
@@ -78,61 +82,155 @@ def read_and_compute_cash_app_btc(filename='cash_app_report_btc.csv'):
     print(f'Computed Cash App Bitcoin with total proceeds {total_proceeds} and total gain/loss {total_gain_loss}.')
 
 
-def read_and_compute_robinhood_crypto(filename, tax_year):
+def get_high_cost(q, sold_amount):
+    q_list = list(q)
+    idx = 0
+    for i in range(len(q_list)):
+        if q_list[i][2] > q_list[idx][2]:
+            idx = i
+    current_amount = min(sold_amount, q_list[idx][1])
+    q[idx][1] -= current_amount
+    if q[idx][1] <= EPS:
+        del q[idx]
+    # q_list is not deleted
+    return current_amount, q_list[idx][2] * current_amount, q_list[idx][0]  # amount, cost, date
+
+
+def get_low_cost(q, sold_amount):
+    q_list = list(q)
+    idx = 0
+    for i in range(len(q_list)):
+        if q_list[i][2] < q_list[idx][2]:
+            idx = i
+    current_amount = min(sold_amount, q_list[idx][1])
+    q[idx][1] -= current_amount
+    if q[idx][1] <= EPS:
+        del q[idx]
+    # q_list is not deleted
+    return current_amount, q_list[idx][2] * current_amount, q_list[idx][0]  # amount, cost, date
+
+
+def read_and_compute_robinhood_crypto(filenames, tax_year, filter=None, transfers=None, tax_harvest_years=None):
+    # tax harvesting: use high cost on sales and low costs on outbound transfers in these years, or FIFO otherwise
     global gain_loss
-    robinhood_gain_loss = pd.read_csv(filename)
-    # we only support these cryptocurrencies for now
-    asset = {'BTC': deque(), 'ETH': deque()}
-    EPS = 1e-10
+    assert len(filenames) > 0
+    activities = [pd.read_csv(filename) for filename in filenames]
+    if filter is not None:
+        # Sometimes Robinhood includes activities not in the tax year.
+        # We filter each file according to the years to avoid duplicates.
+        for i in range(len(filenames)):
+            if i in filter.keys():
+                activities[i] = activities[i][
+                    activities[i].apply(lambda x: dateutil.parser.parse(x['Time Entered']).year in filter[i], axis=1)]
+    robinhood_gain_loss = pd.concat(activities)
+    transfer_history = pd.DataFrame(columns=transfer_history_columns)
+    if transfers is not None:
+        transfer_history = pd.read_csv(transfers)
+    transfer_id = 0
+    asset = {}
     total_gain_loss = 0
     for index, row in robinhood_gain_loss[::-1].iterrows():
-        date = dateutil.parser.parse(row['Time Entered'])
-        year = date.year
-        date = date.strftime("%m/%d/%Y")
         if row['State'] != 'Filled':
             continue
+        date = dateutil.parser.parse(row['Time Entered'])
+        year = date.year
+        while transfer_id < len(transfer_history):
+            transfer_row = transfer_history.iloc[transfer_id]
+            transfer_date = dateutil.parser.parse(transfer_row['Date'])
+            transfer_date_str = transfer_date.strftime("%m/%d/%Y")
+            if transfer_date > date:
+                break
+            # we now process the transfer
+            if transfer_row['Symbol'] not in asset.keys():
+                print('New cryptocurrency:', transfer_row['Symbol'])
+                asset[transfer_row['Symbol']] = deque()
+            q = asset[transfer_row['Symbol']]
+            if transfer_row['Side'] == 'Received':
+                # FIFO
+                notional = float(transfer_row['Cost Basis'])
+                q.append(
+                    [transfer_date_str, float(transfer_row['Quantity']), notional / float(transfer_row['Quantity'])])
+                print(f"Received {float(transfer_row['Quantity'])} {transfer_row['Symbol']} with unit price "
+                      f"{notional / float(transfer_row['Quantity'])} (total {notional})")
+            else:
+                assert transfer_row['Side'] == 'Sent'
+                cost = 0.0
+                sent_amount = transfer_row['Quantity']
+                while sent_amount > EPS:
+                    assert len(q) > 0
+                    if tax_harvest_years is None or transfer_date.year not in tax_harvest_years:
+                        # FIFO
+                        current_amount = min(sent_amount, q[0][1])
+                        cost += q[0][2] * current_amount
+                        q[0][1] -= current_amount
+                        if q[0][1] <= EPS:
+                            q.popleft()
+                        sent_amount -= current_amount
+                    else:
+                        current_amount, current_cost, _ = get_low_cost(q, sent_amount)
+                        sent_amount -= current_amount
+                        cost += current_cost
+                print(f"Sent {transfer_row['Quantity']} {transfer_row['Symbol']} with unit price "
+                      f"{cost / transfer_row['Quantity']} (total {cost})")
+            transfer_id += 1
+        date = date.strftime("%m/%d/%Y")
         if year > tax_year:
             break
         if row['Symbol'] not in asset.keys():
-            print('Unsupported cryptocurrency:', row['Symbol'])
-            continue
+            print('New cryptocurrency:', row['Symbol'])
+            asset[row['Symbol']] = deque()
         assert row['Leaves Quantity'] == 0
         q = asset[row['Symbol']]
         if row['Side'] == 'Buy':
             # FIFO
-            notional = float(row['Notional'][2:])  # -$x.xx
+            if row['Notional'].strip()[0] == '-':
+                notional = float(row['Notional'].strip()[2:])  # -$x.xx
+            else:
+                assert row['Notional'].strip()[0] == '('
+                assert row['Notional'].strip()[-1] == ')'
+                notional = float(row['Notional'].strip()[2:-1])  # ($x.xx)
             q.append(
                 [date, float(row['Quantity']), notional / float(row['Quantity'])])
             print(f"Buy {float(row['Quantity'])} {row['Symbol']} with unit price {notional / float(row['Quantity'])}")
             continue
         assert row['Side'] == 'Sell'
-        notional = float(row['Notional'][1:])  # $x.xx
+        notional = float(row['Notional'].strip()[1:])  # $x.xx
         sold_amount = float(row['Quantity'])
         unit_price = notional / sold_amount
         print(f"Sell {sold_amount} {row['Symbol']} with unit price {unit_price}")
         while sold_amount > EPS:
             assert len(q) > 0
-            current_amount = min(sold_amount, q[0][1])
-            # cannot detect wash sale
-            # cannot distinguish between short/long term
-            # 1040-NR Schedule NEC does not need to detect them
-            sales_price = unit_price * current_amount
-            cost = q[0][2] * current_amount
-            # print(f'- {current_amount}, {sales_price}, {cost}')
+            cost = 0
+            if tax_harvest_years is None or transfer_date.year not in tax_harvest_years:
+                # FIFO
+                current_amount = min(sold_amount, q[0][1])
+                # Cryptocurrency is exempt from wash sale rules. See also:
+                # https://ttlc.intuit.com/turbotax-support/en-us/help-article/cryptocurrency/wash-sale-rule-cryptocurrency/L1d6BuQpH_US_en_US
+                # This script cannot distinguish between short/long term.
+                # 1040-NR Schedule NEC does not need to detect it.
+                sales_price = unit_price * current_amount
+                cost = q[0][2] * current_amount
+                q[0][1] -= current_amount
+                date_acquired = q[0][0]
+                if q[0][1] <= EPS:
+                    q.popleft()
+            else:
+                current_amount, cost, date_acquired = get_high_cost(q, sold_amount)
+                sales_price = unit_price * current_amount
+            sold_amount -= current_amount
             if year == tax_year:
                 loss = max(0, cost - sales_price)
                 gain = max(0, sales_price - cost)
                 total_gain_loss += gain - loss
-                new_item = pd.Series(
-                    {'(a) Kind of property and description': f'{current_amount:.9f} {row["Symbol"]} (Robinhood)',
-                     '(b) Date acquired': q[0][0],
-                     '(c) Date sold': date, '(d) Sales price': sales_price,
-                     '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
-                gain_loss = append_row(gain_loss, new_item)
-            q[0][1] -= current_amount
-            if q[0][1] <= EPS:
-                q.popleft()
-            sold_amount -= current_amount
+                if loss < EPS and gain < EPS and row["Symbol"] in stable_coins:
+                    pass
+                else:
+                    new_item = pd.Series(
+                        {'(a) Kind of property and description': f'{current_amount:.9f} {row["Symbol"]} (Robinhood)',
+                         '(b) Date acquired': date_acquired,
+                         '(c) Date sold': date, '(d) Sales price': sales_price,
+                         '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
+                    gain_loss = append_row(gain_loss, new_item)
     for symbol, q in asset.items():
         cost = 0
         quantity = 0
@@ -222,8 +320,11 @@ def generate_1040NR_NEC_line16(filename='1040NR_NEC_line16.csv'):
 
 
 if __name__ == '__main__':
-    read_and_compute_cash_app_btc('2022_cash_app_report_btc.csv')
-    read_and_compute_robinhood_crypto('2022_Robinhood_crypto_activity.csv', 2022)
-    read_and_compute_robinhood_gain_loss('2022_Robinhood_gain_loss.csv')
-    read_and_compute_schwab_gain_loss('2022_schwab_1099B.csv')
+    # read_and_compute_cash_app_btc('2022_cash_app_report_btc.csv')
+    read_and_compute_robinhood_crypto(['2023_Robinhood_crypto_activity.csv',
+                                       '2022_Robinhood_crypto_activity.csv'], 2023, {1: [2021, 2022]},
+                                      transfers='Robinhood_crypto_transfers.csv',
+                                      tax_harvest_years=[2023])
+    # read_and_compute_robinhood_gain_loss('2022_Robinhood_gain_loss.csv')
+    # read_and_compute_schwab_gain_loss('2022_schwab_1099B.csv')
     generate_1040NR_NEC_line16()
