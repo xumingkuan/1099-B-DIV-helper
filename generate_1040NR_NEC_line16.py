@@ -21,6 +21,30 @@ def append_row(df, row):
     ).reset_index(drop=True)
 
 
+def remove_equal_sign(s):
+    s = str(s).strip()
+    if s.startswith('='):
+        s = s[1:]
+    if (s.startswith("'") or s.startswith('"')) and (s[0] == s[-1]):
+        s = s[1:-1]
+    return s
+
+
+def read_money_value(s):
+    if isinstance(s, float):
+        return s
+    elif isinstance(s, str):
+        s = remove_equal_sign(s)
+        if s.startswith('$'):
+            s = s[1:]
+        if s.startswith('-$'):
+            s = '-' + s[2:]
+        s = s.strip().replace(",", "")
+        return float(s)
+    else:
+        raise Exception(f"Unknown money value type: {s}")
+
+
 def read_and_compute_cash_app_btc(filename='cash_app_report_btc.csv'):
     global gain_loss
     cash_app_btc = pd.read_csv(filename)
@@ -248,27 +272,30 @@ def read_and_compute_robinhood_gain_loss(filename):
     robinhood_gain_loss = pd.read_csv(filename)
     total_gain_loss = 0
     for index, row in robinhood_gain_loss[::-1].iterrows():
+        if row['Symbol'].strip().startswith('The data provided is for informational'):
+            continue
         if row['Event'] == 'Wash':
-            gain = float(row['ST G/L'][1:])
+            gain = read_money_value(row['ST G/L'])
             total_gain_loss += gain
             new_item = pd.Series({
                 '(a) Kind of property and description':
-                    f'Wash sale disallowed loss (determined by Robinhood) of {str(row["Qty"])} {row["Description"]}',
-                '(b) Date acquired': row['Open Date'],
-                '(c) Date sold': row['Closed Date'], '(d) Sales price': 0,
+                    f'Wash sale disallowed loss (determined by Robinhood) of {remove_equal_sign(row["Qty"])} {remove_equal_sign(row["Description"])}',
+                '(b) Date acquired': remove_equal_sign(row['Open Date']),
+                '(c) Date sold': remove_equal_sign(row['Closed Date']), '(d) Sales price': 0,
                 '(e) Cost or other basis': -gain, '(f) LOSS': 0, '(g) GAIN': gain})
             print(f'Wash sale of {gain}.')
             gain_loss = append_row(gain_loss, new_item)
             continue
-        sales_price = float(row['Proceeds'][1:])
-        cost = float(row['Cost'][1:])
+        sales_price = read_money_value(row['Proceeds'])
+        cost = read_money_value(row['Cost'])
         loss = max(0.0, cost - sales_price)
         gain = max(0.0, sales_price - cost)
         total_gain_loss += gain - loss
         new_item = pd.Series({
-            '(a) Kind of property and description': f'{str(row["Qty"])} {row["Description"]} {row["Event"]}',
-            '(b) Date acquired': row['Open Date'],
-            '(c) Date sold': row['Closed Date'], '(d) Sales price': sales_price,
+            '(a) Kind of property and description':
+                f'{remove_equal_sign(row["Qty"])} {remove_equal_sign(row["Description"])} {remove_equal_sign(row["Event"])} (Robinhood)',
+            '(b) Date acquired': remove_equal_sign(row['Open Date']),
+            '(c) Date sold': remove_equal_sign(row['Closed Date']), '(d) Sales price': sales_price,
             '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
         gain_loss = append_row(gain_loss, new_item)
     print(f'Computed Robinhood gain/loss: {total_gain_loss}.')
@@ -301,12 +328,37 @@ def read_and_compute_schwab_gain_loss(filename):
         gain = max(0.0, sales_price - cost)
         total_gain_loss += gain - loss
         new_item = pd.Series({
-            '(a) Kind of property and description': f'{str(row["Description of property (Example 100 sh. XYZ Co.)"])}',
+            '(a) Kind of property and description': f'{str(row["Description of property (Example 100 sh. XYZ Co.)"])} (Schwab)',
             '(b) Date acquired': row['Date acquired'],
             '(c) Date sold': row['Date sold or disposed'], '(d) Sales price': sales_price,
             '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
         gain_loss = append_row(gain_loss, new_item)
     print(f'Computed Schwab gain/loss: {total_gain_loss}.')
+
+
+def read_morgan_stanley_total(filename):
+    # Assume no wash sales.
+    global gain_loss
+    proceeds = None
+    cost = None
+    with open(filename, 'r') as fn:
+        while True:
+            line = fn.readline().strip()
+            if proceeds is None:
+                proceeds = read_money_value(line)
+                continue
+            if cost is None:
+                cost = read_money_value(line)
+            break
+    loss = max(0.0, cost - proceeds)
+    gain = max(0.0, proceeds - cost)
+    new_item = pd.Series({
+        '(a) Kind of property and description': 'Various (Morgan Stanley (Total Reportable))',
+        '(b) Date acquired': 'Various',
+        '(c) Date sold': 'Various', '(d) Sales price': proceeds,
+        '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
+    gain_loss = append_row(gain_loss, new_item)
+    print(f'Read Morgan Stanley gain/loss: {gain - loss}.')
 
 
 def generate_1040NR_NEC_line16(filename='1040NR_NEC_line16.csv'):
@@ -320,11 +372,12 @@ def generate_1040NR_NEC_line16(filename='1040NR_NEC_line16.csv'):
 
 
 if __name__ == '__main__':
-    # read_and_compute_cash_app_btc('2022_cash_app_report_btc.csv')
+    read_and_compute_cash_app_btc('2023_cash_app_report_btc.csv')
     read_and_compute_robinhood_crypto(['2023_Robinhood_crypto_activity.csv',
                                        '2022_Robinhood_crypto_activity.csv'], 2023, {1: [2021, 2022]},
                                       transfers='Robinhood_crypto_transfers.csv',
                                       tax_harvest_years=[2023])
-    # read_and_compute_robinhood_gain_loss('2022_Robinhood_gain_loss.csv')
-    # read_and_compute_schwab_gain_loss('2022_schwab_1099B.csv')
+    read_and_compute_robinhood_gain_loss('2023_Robinhood_gain_loss.csv')
+    read_and_compute_schwab_gain_loss('2023_schwab_1099B.csv')
+    read_morgan_stanley_total('2023_Morgan_Stanley_total.csv')
     generate_1040NR_NEC_line16()
