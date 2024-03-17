@@ -45,7 +45,7 @@ def read_money_value(s):
         raise Exception(f"Unknown money value type: {s}")
 
 
-def read_and_compute_cash_app_btc(filename='cash_app_report_btc.csv'):
+def read_and_compute_cash_app_btc(filename='cash_app_report_btc.csv', current_year=None):
     global gain_loss
     cash_app_btc = pd.read_csv(filename)
     cash_app_btc.rename({
@@ -67,6 +67,8 @@ def read_and_compute_cash_app_btc(filename='cash_app_report_btc.csv'):
         tzinfos = {"EST": dateutil.tz.gettz('America/Eastern'),
                    "EDT": dateutil.tz.gettz('America/Eastern')}
         date = dateutil.parser.parse(row['Date'], tzinfos=tzinfos)
+        if current_year is not None and date.year != current_year:
+            continue
         date = date.strftime("%m/%d/%Y")
         assert row['Symbol'] == "BTC"
         if row['Action'] == "Bitcoin Boost":
@@ -372,7 +374,7 @@ def generate_1040NR_NEC_line16(filename='1040NR_NEC_line16.csv'):
 
 
 if __name__ == '__main__':
-    read_and_compute_cash_app_btc('2023_cash_app_report_btc.csv')
+    read_and_compute_cash_app_btc('2023_cash_app_report_btc.csv', 2023)
     read_and_compute_robinhood_crypto(['2023_Robinhood_crypto_activity.csv',
                                        '2022_Robinhood_crypto_activity.csv'], 2023, {1: [2021, 2022]},
                                       transfers='Robinhood_crypto_transfers.csv',
