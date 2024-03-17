@@ -12,10 +12,11 @@ Supported input:
 Edit the file names hard-coded in [generate_1040NR_NEC_line16.py](generate_1040NR_NEC_line16.py) and then run `python generate_1040NR_NEC_line16.py`.
 
 # 1099-DIV Helper
-A tool to compute the tax-exempt portion from Vanguard and iShares ETFs to be subtracted from the total dividend amount before filling into Form 1040-NR Schedule NEC line 1 for non-resident aliens (NRAs) in the US from Form 1099-DIV by Morgan Stanley.
+A tool to compute the tax-exempt portion from Vanguard and iShares ETFs to be subtracted from the total dividend amount before filling into Form 1040-NR Schedule NEC line 1 for non-resident aliens (NRAs) in the US from Form 1099-DIV by Morgan Stanley and Schwab.
 
 Supported input:
-- A TXT file copied from Morgan Stanley 1099 Consolidated Tax Statement, the 1099-DIV DIVIDENDS & DISTRIBUTIONS Ordinary Dividends part (e.g., [2023_Morgan_Stanley_dividend_detail.txt](examples/2023_Morgan_Stanley_dividend_detail.txt)).
+- A TXT file copied from Morgan Stanley 1099 Consolidated Tax Statement, the "1099-DIV DIVIDENDS & DISTRIBUTIONS Ordinary Dividends" part (e.g., [2023_Morgan_Stanley_dividend_detail.txt](examples/2023_Morgan_Stanley_dividend_detail.txt));
+- A TXT file copied from Schwab FORM 1099 COMPOSITE, the "Detail Information of Dividends and Distributions" part (e.g., [2023_schwab_dividend_detail.txt](examples/2023_schwab_dividend_detail.txt)).
 
 ### Usage
 To take advantage of the tax-exempt interest-related dividend portion:

@@ -54,8 +54,10 @@ def all_capital_letters(s):
             return False
     return True
 
+
 def percentage_to_float(x):
-    return float(x.strip('%'))/100
+    return float(x.strip('%')) / 100
+
 
 def read_vanguard_dividend(symbol):
     global vanguard_dividend
@@ -150,10 +152,8 @@ def read_ishares_exempt_info(tax_year=2023):
                 phase = 2
                 continue
 
+
 def compute_morgan_stanley_dividend(filename):
-    global vanguard_cusip_to_symbol
-    global vanguard_interest
-    global vanguard_dividend
     global exempt_detail
     phase = 0
     symbol = None
@@ -211,6 +211,84 @@ def compute_morgan_stanley_dividend(filename):
     print(f'Tax-exempt amount for Morgan Stanley: {total_exempt_amount}')
 
 
+def compute_schwab_dividend(filename):
+    global exempt_detail
+    phase = 0
+    symbol = None
+    is_vanguard = True
+    amount = 0
+    total_exempt_amount = 0.0
+    min_total_exempt_amount = 0.0
+    max_total_exempt_amount = 0.0
+    appeared_symbols = set()
+    with open(filename, 'r') as fn:
+        lines = fn.readlines()
+        for line in lines:
+            line = line.strip()
+            if phase == 0:
+                if line in vanguard_cusip_to_symbol.keys():
+                    symbol = vanguard_cusip_to_symbol[line]
+                    is_vanguard = True
+                    phase = 1
+                if line in others_cusip_to_symbol.keys():
+                    symbol = others_cusip_to_symbol[line]
+                    is_vanguard = False
+                    phase = 1
+                continue
+            if phase == 1:
+                if '$' in line:
+                    phase = 2
+                continue
+            if phase == 2:
+                if '$' in line:
+                    phase = 3
+                continue
+            if phase == 3:
+                if '$' in line:
+                    phase = 4
+                continue
+            if phase == 4:
+                phase = 0
+                amount = read_money_value(line)
+                if amount == 0:
+                    continue
+                exempt_percentage = 0
+                min_this_time = 1
+                max_this_time = 0
+                if is_vanguard:
+                    if symbol not in vanguard_dividend.keys():
+                        print(
+                            f'Missing dividend info for {symbol}. Please go to https://investor.vanguard.com/investment-products/etfs/profile/{symbol.lower()} to get the dividend information.')
+                        continue
+                    total_int = 0.0
+                    total_div = 0.0
+                    for date in vanguard_dividend[symbol].keys():
+                        if date not in vanguard_interest[symbol].keys():
+                            print(f'Missing interest info for {symbol} on {date.strftime("%m/%d/%Y")}.')
+                            continue
+                        total_int += vanguard_interest[symbol][date]
+                        total_div += vanguard_dividend[symbol][date]
+                        min_this_time = min(min_this_time, total_int / total_div)
+                        max_this_time = max(max_this_time, total_int / total_div)
+                    exempt_percentage = total_int / total_div
+                else:
+                    min_this_time = min(others_percentage[symbol].values())
+                    max_this_time = max(others_percentage[symbol].values())
+                    exempt_percentage = sum(others_percentage[symbol].values()) / len(others_percentage[symbol])
+                total_exempt_amount += amount * exempt_percentage
+                min_total_exempt_amount += amount * min_this_time
+                max_total_exempt_amount += amount * max_this_time
+                new_item = pd.Series(
+                    {'Symbol (Brokerage)': f"{symbol} (Schwab{' Qualified Dividend' if symbol in appeared_symbols else ''})", 'Date': 'Various',
+                     'Ordinary Dividends': amount,
+                     'Interest Percentage': f"{exempt_percentage:.2%}", 'Interest-Related Dividend': amount * exempt_percentage})
+                exempt_detail = append_row(exempt_detail, new_item)
+                appeared_symbols.add(symbol)
+                continue
+    print(
+        f'Tax-exempt amount for Schwab: {total_exempt_amount}. Because Schwab only reports the total dividend amount, the tax-exempt amount can be in [{min_total_exempt_amount}, {max_total_exempt_amount}]. The average amount is reported here.')
+
+
 def show_exempt_detail(filename='exempt_detail.csv'):
     exempt_detail.to_csv(filename, index=False)
 
@@ -219,4 +297,5 @@ if __name__ == '__main__':
     read_vanguard_exempt_info(tax_year=2023)
     read_ishares_exempt_info(tax_year=2023)
     compute_morgan_stanley_dividend(filename='2023_Morgan_Stanley_dividend_detail.txt')
+    compute_schwab_dividend(filename='2023_schwab_dividend_detail.txt')
     show_exempt_detail()
