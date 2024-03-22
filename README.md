@@ -15,9 +15,9 @@ Edit the file names hard-coded in [generate_1040NR_NEC_line16.py](generate_1040N
 A tool to compute the tax-exempt interest-related dividend portion from Vanguard, Fidelity, and iShares ETFs to be subtracted from the total dividend amount before filling into Form 1040-NR Schedule NEC line 1 for non-resident aliens (NRAs) in the US from Form 1099-DIV by Morgan Stanley, Schwab, and Fidelity.
 
 Supported input:
-- A `.txt` file copied from Morgan Stanley 1099 Consolidated Tax Statement, the "1099-DIV DIVIDENDS & DISTRIBUTIONS Ordinary Dividends" part (e.g., [2023_Morgan_Stanley_dividend_detail.txt](examples/2023_Morgan_Stanley_dividend_detail.txt));
-- A `.txt` file copied from Schwab FORM 1099 COMPOSITE, the "Detail Information of Dividends and Distributions" part (e.g., [2023_schwab_dividend_detail.txt](examples/2023_Schwab_dividend_detail.txt)).
-- A `.txt` file copied from Fidelity Consolidated Form 1099, the "Total Ordinary Dividends and Distributions Detail" part (e.g., [2023_Fidelity_dividend_detail](examples/2023_Fidelity_dividend_detail.txt)).
+- A `.txt` file copied from Morgan Stanley "1099 Consolidated Tax Statement", the "1099-DIV DIVIDENDS & DISTRIBUTIONS Ordinary Dividends" part (e.g., [2023_Morgan_Stanley_dividend_detail.txt](examples/2023_Morgan_Stanley_dividend_detail.txt));
+- A `.txt` file copied from Schwab "FORM 1099 COMPOSITE", the "Detail Information of Dividends and Distributions" part (e.g., [2023_schwab_dividend_detail.txt](examples/2023_Schwab_dividend_detail.txt));
+- A `.txt` file copied from Fidelity "Consolidated Form 1099", the "Total Ordinary Dividends and Distributions Detail" part (e.g., [2023_Fidelity_dividend_detail.txt](examples/2023_Fidelity_dividend_detail.txt)).
 
 ### Usage
 - For Vanguard: for the tax years not included in this repo, please download the files for the corresponding tax years from websites like https://advisors.vanguard.com/content/dam/fas/pdfs/2023_VGI_NRA%20Layout.xls and export it to a `.csv` file like [2023_VGI_NRA%20Layout.csv](dividend/2023/2023_VGI_NRA%20Layout.csv). 
