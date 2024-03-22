@@ -380,6 +380,6 @@ if __name__ == '__main__':
                                       transfers='Robinhood_crypto_transfers.csv',
                                       tax_harvest_years=[2023])
     read_and_compute_robinhood_gain_loss('2023_Robinhood_gain_loss.csv')
-    read_and_compute_schwab_gain_loss('2023_schwab_1099B.csv')
+    read_and_compute_schwab_gain_loss('2023_Schwab_1099B.CSV')
     read_morgan_stanley_total('2023_Morgan_Stanley_total.csv')
     generate_1040NR_NEC_line16()
