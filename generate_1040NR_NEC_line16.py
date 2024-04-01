@@ -374,12 +374,13 @@ def generate_1040NR_NEC_line16(filename='1040NR_NEC_line16.csv'):
 
 
 if __name__ == '__main__':
-    read_and_compute_cash_app_btc('2023_cash_app_report_btc.csv', tax_year=2023)
-    read_and_compute_robinhood_crypto(['2023_Robinhood_crypto_activity.csv',
-                                       '2022_Robinhood_crypto_activity.csv'], 2023, {1: [2021, 2022]},
-                                      transfers='Robinhood_crypto_transfers.csv',
+    # read_and_compute_cash_app_btc('2023_cash_app_report_btc.csv', tax_year=2023)
+    read_and_compute_robinhood_crypto(['examples/2023_Robinhood_crypto_activity.csv',
+                                       #  '2022_Robinhood_crypto_activity.csv'
+                                       ], 2023, {1: [2021, 2022]},
+                                      transfers='examples/Robinhood_crypto_transfers.csv',
                                       tax_harvest_years=[2023])
-    read_and_compute_robinhood_gain_loss('2023_Robinhood_gain_loss.csv')
-    read_and_compute_schwab_gain_loss('2023_Schwab_1099B.CSV')
-    read_morgan_stanley_total('2023_Morgan_Stanley_total.csv')
+    # read_and_compute_robinhood_gain_loss('2023_Robinhood_gain_loss.csv')
+    # read_and_compute_schwab_gain_loss('2023_Schwab_1099B.CSV')
+    read_morgan_stanley_total('examples/2023_Morgan_Stanley_total.csv')
     generate_1040NR_NEC_line16()

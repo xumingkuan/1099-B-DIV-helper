@@ -19,6 +19,8 @@ Supported input:
 - A `.txt` file copied from Schwab "FORM 1099 COMPOSITE", the "Detail Information of Dividends and Distributions" part (e.g., [2023_schwab_dividend_detail.txt](examples/2023_Schwab_dividend_detail.txt));
 - A `.txt` file copied from Fidelity "Consolidated Form 1099", the "Total Ordinary Dividends and Distributions Detail" part (e.g., [2023_Fidelity_dividend_detail.txt](examples/2023_Fidelity_dividend_detail.txt)).
 
+Please prepend the total dividend amount (Form 1099-DIV Box 1a) to the first line of each `.txt` file.
+
 ### Usage
 - For Vanguard: for the tax years not included in this repo, please download the files for the corresponding tax years from websites like https://advisors.vanguard.com/content/dam/fas/pdfs/2023_VGI_NRA%20Layout.xls and export it to a `.csv` file like [2023_VGI_NRA%20Layout.csv](dividend/2023/2023_VGI_NRA%20Layout.csv). 
   - In addition, please go to Vanguard's website (https://investor.vanguard.com/investment-products/etfs/profile/vcit) to find the dividend income and prepare the `.csv` file ([VCIT.csv](dividend/vanguard/VCIT.csv)) for each ETF with interest-related dividends.

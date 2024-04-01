@@ -171,7 +171,8 @@ def read_ishares_exempt_info(tax_year=2023):
 
 def compute_morgan_stanley_dividend(filename):
     global exempt_detail
-    phase = 0
+    total_dividend = None
+    phase = -1
     symbol = None
     is_vanguard = True
     is_fidelity = False
@@ -183,6 +184,10 @@ def compute_morgan_stanley_dividend(filename):
         lines = fn.readlines()
         for line in lines:
             line = line.strip()
+            if phase == -1:
+                total_dividend = read_money_value(line)
+                phase = 0
+                continue
             if phase == 0:
                 if line in vanguard_cusip_to_symbol.keys():
                     symbol = vanguard_cusip_to_symbol[line]
@@ -236,12 +241,14 @@ def compute_morgan_stanley_dividend(filename):
                 exempt_detail = append_row(exempt_detail, new_item)
                 appeared_symbols.add(symbol)
                 continue
-    print(f'Tax-exempt amount for Morgan Stanley: {total_exempt_amount}{f" ({appeared_symbols})" if len(appeared_symbols) > 0 else ""}.')
+    print(f'Tax-exempt amount for Morgan Stanley: {total_exempt_amount}{f" ({total_exempt_amount / total_dividend * 100:.2f}%, {appeared_symbols})" if len(appeared_symbols) > 0 else ""}.')
+    print(f'Remaining dividend for Morgan Stanley: {total_dividend - total_exempt_amount}.')
 
 
 def compute_schwab_dividend(filename):
     global exempt_detail
-    phase = 0
+    total_dividend = None
+    phase = -1
     symbol = None
     is_vanguard = True
     is_fidelity = False
@@ -254,6 +261,10 @@ def compute_schwab_dividend(filename):
         lines = fn.readlines()
         for line in lines:
             line = line.strip()
+            if phase == -1:
+                total_dividend = read_money_value(line)
+                phase = 0
+                continue
             if phase == 0:
                 if line in vanguard_cusip_to_symbol.keys():
                     symbol = vanguard_cusip_to_symbol[line]
@@ -325,7 +336,8 @@ def compute_schwab_dividend(filename):
                 exempt_detail = append_row(exempt_detail, new_item)
                 appeared_symbols.add(symbol)
                 continue
-    print(f'Tax-exempt amount for Schwab: {total_exempt_amount}{f" ({appeared_symbols})" if len(appeared_symbols) > 0 else ""}.')
+    print(f'Tax-exempt amount for Schwab: {total_exempt_amount}{f" ({total_exempt_amount / total_dividend * 100:.2f}%, {appeared_symbols})" if len(appeared_symbols) > 0 else ""}.')
+    print(f'Remaining dividend for Schwab: {total_dividend - total_exempt_amount}.')
     if min_total_exempt_amount != max_total_exempt_amount:
         print(
             f'Because Schwab only reports the total dividend amount, the tax-exempt amount can be in [{min_total_exempt_amount}, {max_total_exempt_amount}]. The average amount is reported here.')
@@ -333,7 +345,8 @@ def compute_schwab_dividend(filename):
 
 def compute_fidelity_dividend(filename):
     global exempt_detail
-    phase = 0
+    total_dividend = None
+    phase = -1
     symbol = None
     is_vanguard = True
     is_fidelity = False
@@ -347,6 +360,10 @@ def compute_fidelity_dividend(filename):
         lines = fn.readlines()
         for line in lines:
             line = line.strip()
+            if phase == -1:
+                total_dividend = read_money_value(line)
+                phase = 0
+                continue
             if phase == 0:
                 line = line.split(',')
                 if len(line) != 3:
@@ -430,7 +447,8 @@ def compute_fidelity_dividend(filename):
                 appeared_symbols.add(symbol)
                 phase = 0
                 continue
-    print(f'Tax-exempt amount for Fidelity: {total_exempt_amount}{f" ({appeared_symbols})" if len(appeared_symbols) > 0 else ""}.')
+    print(f'Tax-exempt amount for Fidelity: {total_exempt_amount}{f" ({total_exempt_amount / total_dividend * 100:.2f}%, {appeared_symbols})" if len(appeared_symbols) > 0 else ""}.')
+    print(f'Remaining dividend for Fidelity: {total_dividend - total_exempt_amount}.')
 
 
 def show_exempt_detail(filename='exempt_detail.csv'):
@@ -441,7 +459,7 @@ if __name__ == '__main__':
     read_vanguard_exempt_info(tax_year=2023)
     read_fidelity_exempt_info(tax_year=2023)
     read_ishares_exempt_info(tax_year=2023)
-    compute_morgan_stanley_dividend(filename='2023_Morgan_Stanley_dividend_detail.txt')
-    compute_schwab_dividend(filename='2023_Schwab_dividend_detail.txt')
-    compute_fidelity_dividend(filename='2023_Fidelity_dividend_detail.txt')
+    compute_morgan_stanley_dividend(filename='examples/2023_Morgan_Stanley_dividend_detail.txt')
+    compute_schwab_dividend(filename='examples/2023_Schwab_dividend_detail.txt')
+    compute_fidelity_dividend(filename='examples/2023_Fidelity_dividend_detail.txt')
     show_exempt_detail()
