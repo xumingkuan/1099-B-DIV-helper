@@ -1,4 +1,6 @@
-Date,Symbol,Side,Quantity,Cost Basis
-01/15/2023,USDC,Received,2,2
-"03/30/2023, 11:00:00",USDC,Sent,1,1
-"03/30/2023, 11:00:01",USDC,Sent,1,1
+Date,Symbol,Side,Quantity,Cost Basis,Price if sold
+01/15/2023,USDC,Received,2,2,
+"03/30/2023, 11:00:00",USDC,Sent,1,,
+"03/30/2023, 11:00:01",USDC,Sent,1,,
+01/01/2024,ETH,Received,0.1,235.28,
+08/01/2024,ETH,Sent,0.1,,320

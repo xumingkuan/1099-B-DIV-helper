@@ -9,7 +9,7 @@ gain_loss_columns = ['(a) Kind of property and description', '(b) Date acquired'
                      '(e) Cost or other basis', '(f) LOSS', '(g) GAIN']
 gain_loss = pd.DataFrame(columns=gain_loss_columns)
 
-transfer_history_columns = ['Date', 'Symbol', 'Side', 'Quantity', 'Cost Basis']
+transfer_history_columns = ['Date', 'Symbol', 'Side', 'Quantity', 'Cost Basis', 'Price if sold']
 stable_coins = set(['USDC'])
 EPS = 1e-10
 
@@ -155,6 +155,60 @@ def read_and_compute_robinhood_crypto(filenames, tax_year, filter=None, transfer
     transfer_id = 0
     asset = {}
     total_gain_loss = 0
+    transfer_date = None
+
+    def process_transfer():
+        nonlocal transfer_id, notional, cost, current_amount, transfer_date, new_item, date_acquired, total_gain_loss
+        global gain_loss
+        # we now process the transfer
+        if transfer_row['Symbol'] not in asset.keys():
+            print('New cryptocurrency:', transfer_row['Symbol'])
+            asset[transfer_row['Symbol']] = deque()
+        q = asset[transfer_row['Symbol']]
+        treat_as_sold = 'Price if sold' in transfer_row.keys() and (transfer_row['Price if sold'] is not None)
+        if transfer_row['Side'] == 'Received':
+            # FIFO
+            notional = float(transfer_row['Cost Basis'])
+            q.append(
+                [transfer_date_str, float(transfer_row['Quantity']), notional / float(transfer_row['Quantity'])])
+            print(f"Received {float(transfer_row['Quantity'])} {transfer_row['Symbol']} with unit price "
+                  f"{notional / float(transfer_row['Quantity'])} (total {notional})")
+        else:
+            assert transfer_row['Side'] == 'Sent'
+            cost = 0.0
+            sent_amount = transfer_row['Quantity']
+            while sent_amount > EPS:
+                assert len(q) > 0
+                if tax_harvest_years is None or year not in tax_harvest_years:
+                    # FIFO
+                    current_amount = min(sent_amount, q[0][1])
+                    cost += q[0][2] * current_amount
+                    q[0][1] -= current_amount
+                    date_acquired = q[0][0]
+                    if q[0][1] <= EPS:
+                        q.popleft()
+                    sent_amount -= current_amount
+                else:
+                    current_amount, current_cost, date_acquired = get_high_cost(q, sent_amount) if treat_as_sold else get_low_cost(q, sent_amount)
+                    sent_amount -= current_amount
+                    cost += current_cost
+                if year == tax_year and 'Price if sold' in transfer_row.keys() and transfer_row['Price if sold']:
+                    sent_price = float(transfer_row['Price if sold']) / transfer_row['Quantity'] * current_amount
+                    loss = max(0, cost - sent_price)
+                    gain = max(0, sent_price - cost)
+                    total_gain_loss += gain - loss
+                    if loss < EPS and gain < EPS and transfer_row["Symbol"] in stable_coins:
+                        pass
+                    else:
+                        new_item = pd.Series(
+                            {'(a) Kind of property and description': f'{current_amount:.9f} {transfer_row["Symbol"]} (Robinhood)',
+                             '(b) Date acquired': date_acquired,
+                             '(c) Date sold': transfer_date.strftime("%m/%d/%Y"), '(d) Sales price': sent_price,
+                             '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
+                        gain_loss = append_row(gain_loss, new_item)
+            print(f"Sent {transfer_row['Quantity']} {transfer_row['Symbol']} with unit price "
+                  f"{cost / transfer_row['Quantity']} (total {cost})")
+
     for index, row in robinhood_gain_loss[::-1].iterrows():
         if row['State'] != 'Filled':
             continue
@@ -166,38 +220,7 @@ def read_and_compute_robinhood_crypto(filenames, tax_year, filter=None, transfer
             transfer_date_str = transfer_date.strftime("%m/%d/%Y")
             if transfer_date > date:
                 break
-            # we now process the transfer
-            if transfer_row['Symbol'] not in asset.keys():
-                print('New cryptocurrency:', transfer_row['Symbol'])
-                asset[transfer_row['Symbol']] = deque()
-            q = asset[transfer_row['Symbol']]
-            if transfer_row['Side'] == 'Received':
-                # FIFO
-                notional = float(transfer_row['Cost Basis'])
-                q.append(
-                    [transfer_date_str, float(transfer_row['Quantity']), notional / float(transfer_row['Quantity'])])
-                print(f"Received {float(transfer_row['Quantity'])} {transfer_row['Symbol']} with unit price "
-                      f"{notional / float(transfer_row['Quantity'])} (total {notional})")
-            else:
-                assert transfer_row['Side'] == 'Sent'
-                cost = 0.0
-                sent_amount = transfer_row['Quantity']
-                while sent_amount > EPS:
-                    assert len(q) > 0
-                    if tax_harvest_years is None or year not in tax_harvest_years:
-                        # FIFO
-                        current_amount = min(sent_amount, q[0][1])
-                        cost += q[0][2] * current_amount
-                        q[0][1] -= current_amount
-                        if q[0][1] <= EPS:
-                            q.popleft()
-                        sent_amount -= current_amount
-                    else:
-                        current_amount, current_cost, _ = get_low_cost(q, sent_amount)
-                        sent_amount -= current_amount
-                        cost += current_cost
-                print(f"Sent {transfer_row['Quantity']} {transfer_row['Symbol']} with unit price "
-                      f"{cost / transfer_row['Quantity']} (total {cost})")
+            process_transfer()
             transfer_id += 1
         date = date.strftime("%m/%d/%Y")
         if year > tax_year:
@@ -257,6 +280,12 @@ def read_and_compute_robinhood_crypto(filenames, tax_year, filter=None, transfer
                          '(c) Date sold': date, '(d) Sales price': sales_price,
                          '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
                     gain_loss = append_row(gain_loss, new_item)
+    while transfer_id < len(transfer_history):
+        transfer_row = transfer_history.iloc[transfer_id]
+        transfer_date = dateutil.parser.parse(transfer_row['Date'])
+        transfer_date_str = transfer_date.strftime("%m/%d/%Y")
+        process_transfer()
+        transfer_id += 1
     for symbol, q in asset.items():
         cost = 0
         quantity = 0
