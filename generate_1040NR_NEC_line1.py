@@ -125,7 +125,7 @@ def read_ishares_exempt_info(tax_year=2023):
     phase = 0
     symbol = ''
     counter = 0
-    with open(filename, 'r') as fn:
+    with open(filename, 'r', encoding='UTF-8') as fn:
         lines = fn.readlines()
         for line in lines:
             line = line.strip()
@@ -157,7 +157,13 @@ def read_ishares_exempt_info(tax_year=2023):
             if phase == 4:
                 # input percentage
                 if line != 'N/A':
-                    p = percentage_to_float(line)
+                    try:
+                        p = percentage_to_float(line)
+                    except ValueError as e:
+                        # less than 12 months
+                        print(f'{symbol} does not have {len(dates)} values. Please double check if some numbers are missing.')
+                        phase = 2
+                        continue
                     others_percentage[symbol][dates[counter]] = p
                 counter += 1
                 if counter >= len(dates):
