@@ -117,6 +117,64 @@ def read_fidelity_exempt_info(tax_year=2023):
                 fidelity_cusip_to_symbol[line[2]] = line[0]
 
 
+def read_jpmorgan_exempt_info(tax_year=2024):
+    global others_cusip_to_symbol
+    global others_percentage
+    filename = f'dividend/{tax_year}/jpmorgan{tax_year}.txt'
+    dates = []
+    phase = 0
+    symbol = ''
+    counter = 0
+    with open(filename, 'r', encoding='UTF-8') as fn:
+        lines = fn.readlines()
+        for line in lines:
+            line = line.strip()
+            if phase == 0:
+                if 'CUSIP' in line:
+                    phase = 1
+                continue
+            if phase == 1:
+                # input dates
+                if not line[0].isdigit():
+                    phase = 2  # name
+                    continue
+                date = dateutil.parser.parse(line)
+                dates.append(date)
+                continue
+            if phase == 2:
+                # symbol
+                symbol = line
+                others_percentage[symbol] = {}
+                phase = 3
+                continue
+            if phase == 3:
+                # cusip
+                cusip = line
+                others_cusip_to_symbol[cusip] = symbol
+                phase = 4
+                counter = 0
+                continue
+            if phase == 4:
+                # input percentage
+                if line != 'N/A':
+                    try:
+                        p = percentage_to_float(line)
+                    except ValueError as e:
+                        # less than 12 months
+                        print(f'{symbol} does not have {len(dates)} values. Please double check if some numbers are missing.')
+                        phase = 2
+                        continue
+                    others_percentage[symbol][dates[counter]] = p
+                counter += 1
+                if counter >= len(dates):
+                    phase = 5
+                continue
+            if phase == 5:
+                # name
+                phase = 2
+                continue
+
+
 def read_ishares_exempt_info(tax_year=2023):
     global others_cusip_to_symbol
     global others_percentage
@@ -465,6 +523,7 @@ if __name__ == '__main__':
     read_vanguard_exempt_info(tax_year=2023)
     read_fidelity_exempt_info(tax_year=2023)
     read_ishares_exempt_info(tax_year=2023)
+    read_jpmorgan_exempt_info(tax_year=2024)
     compute_morgan_stanley_dividend(filename='examples/2023_Morgan_Stanley_dividend_detail.txt')
     compute_schwab_dividend(filename='examples/2023_Schwab_dividend_detail.txt')
     compute_fidelity_dividend(filename='examples/2023_Fidelity_dividend_detail.txt')
