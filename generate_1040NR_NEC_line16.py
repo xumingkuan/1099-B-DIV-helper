@@ -31,7 +31,9 @@ def remove_equal_sign(s):
 
 
 def read_money_value(s):
-    if isinstance(s, float):
+    if str(s) == 'nan':  # empty
+        return 0
+    elif isinstance(s, float):
         return s
     elif isinstance(s, str):
         s = remove_equal_sign(s)
@@ -332,22 +334,55 @@ def read_and_compute_robinhood_gain_loss(filename):
     print(f'Computed Robinhood gain/loss: {total_gain_loss}.')
 
 
+def read_and_compute_robinhood_gain_loss_2024(filename):
+    # Different format with 2023...
+    global gain_loss
+    robinhood_gain_loss = pd.read_csv(filename)
+    total_gain_loss = 0
+    for index, row in robinhood_gain_loss[::-1].iterrows():
+        if row['Close Date'].strip().startswith('The information') or row['Close Date'].strip() == '':
+            continue
+        open_date = dateutil.parser.parse(row['Open Date']).strftime("%m/%d/%Y")
+        close_date = dateutil.parser.parse(row['Close Date']).strftime("%m/%d/%Y")
+        sales_price = read_money_value(row['Proceeds'])
+        cost = read_money_value(row['Tax Cost'])
+        loss = max(0.0, cost - sales_price)
+        gain = max(0.0, sales_price - cost)
+        total_gain_loss += gain - loss
+        action = remove_equal_sign(row["Record Type"])
+        if action == 'nan':
+            action = 'expired'
+        new_item = pd.Series({
+            '(a) Kind of property and description':
+                f'{remove_equal_sign(row["Units Closed"])} {remove_equal_sign(row["Security"])} {action} (Robinhood){"" if str(row["WS Cost Adj"]).strip() in ["", "nan"] else " (wash sale adjusted cost basis)"}',
+            '(b) Date acquired': open_date,
+            '(c) Date sold': close_date, '(d) Sales price': sales_price,
+            '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
+        gain_loss = append_row(gain_loss, new_item)
+    print(f'Computed Robinhood gain/loss: {total_gain_loss}.')
+
+
 def read_and_compute_schwab_gain_loss(filename):
     global gain_loss
     with open(filename, 'r') as fn:
         # Ignore the 1099-DIV, 1099-INT, ... parts
-        while fn.readline().strip() != '"Form 1099 B",':
+        while not fn.readline().strip().startswith("Form 1099 B"):
             pass
         fn.readline()  # Ignore the line with numbers
         schwab_gain_loss = pd.read_csv(fn, header='infer')
     total_gain_loss = 0
     for index, row in schwab_gain_loss.iterrows():
+        cost_basis_reported_string = ""
+        if row["Check if basis reported to IRS"] == "No":
+            cost_basis_reported_string = " (cost basis not reported to IRS)"
+            print(f'Warning: cost basis may be missing: {str(row["Description of property (Example 100 sh. XYZ Co.)"])}, '
+                  f"acquired {row['Date acquired']}, sold {row['Date sold or disposed']}, proceeds {row['Proceeds']}, cost basis {row['Cost or other basis']}")
         if float(row["Wash sale loss disallowed"][1:]) != 0.0:
             gain = float(row["Wash sale loss disallowed"][1:])
             total_gain_loss += gain
             new_item = pd.Series({
                 '(a) Kind of property and description':
-                    f'Wash sale disallowed loss (determined by Schwab) of {str(row["Description of property (Example 100 sh. XYZ Co.)"])}',
+                    f'Wash sale disallowed loss (determined by Schwab) of {str(row["Description of property (Example 100 sh. XYZ Co.)"])}{cost_basis_reported_string}',
                 '(b) Date acquired': row['Date acquired'],
                 '(c) Date sold': row['Date sold or disposed'], '(d) Sales price': 0,
                 '(e) Cost or other basis': -gain, '(f) LOSS': 0, '(g) GAIN': gain})
@@ -359,7 +394,7 @@ def read_and_compute_schwab_gain_loss(filename):
         gain = max(0.0, sales_price - cost)
         total_gain_loss += gain - loss
         new_item = pd.Series({
-            '(a) Kind of property and description': f'{str(row["Description of property (Example 100 sh. XYZ Co.)"])} (Schwab)',
+            '(a) Kind of property and description': f'{str(row["Description of property (Example 100 sh. XYZ Co.)"])} (Schwab){cost_basis_reported_string}',
             '(b) Date acquired': row['Date acquired'],
             '(c) Date sold': row['Date sold or disposed'], '(d) Sales price': sales_price,
             '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
@@ -367,7 +402,7 @@ def read_and_compute_schwab_gain_loss(filename):
     print(f'Computed Schwab gain/loss: {total_gain_loss}.')
 
 
-def read_morgan_stanley_total(filename):
+def read_total_only(brokerage_name, filename):
     # Assume no wash sales.
     global gain_loss
     proceeds = None
@@ -384,12 +419,12 @@ def read_morgan_stanley_total(filename):
     loss = max(0.0, cost - proceeds)
     gain = max(0.0, proceeds - cost)
     new_item = pd.Series({
-        '(a) Kind of property and description': 'Various (Morgan Stanley (Total Reportable))',
+        '(a) Kind of property and description': f'Various ({brokerage_name} (Total Reportable))',
         '(b) Date acquired': 'Various',
         '(c) Date sold': 'Various', '(d) Sales price': proceeds,
         '(e) Cost or other basis': cost, '(f) LOSS': loss, '(g) GAIN': gain})
     gain_loss = append_row(gain_loss, new_item)
-    print(f'Read Morgan Stanley gain/loss: {gain - loss}.')
+    print(f'Read {brokerage_name} gain/loss: {gain - loss}.')
 
 
 def generate_1040NR_NEC_line16(filename='1040NR_NEC_line16.csv'):
